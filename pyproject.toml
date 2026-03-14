@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoquant"
+version = "0.1.0"
+description = "Minimal AutoQuant CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "pandas",
+  "polygon-api-client",
+  "python-dotenv",
+  "scikit-learn",
+  "typer>=0.12",
+]
+
+[project.scripts]
+autoquant = "autoquant_cli.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["autoquant_cli*", "core*"]

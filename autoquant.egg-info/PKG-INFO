@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: autoquant
+Version: 0.1.0
+Summary: Minimal AutoQuant CLI
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: polygon-api-client
+Requires-Dist: python-dotenv
+Requires-Dist: scikit-learn
+Requires-Dist: typer>=0.12
+
+# AutoQuant CLI
+
+Minimal CLI with three commands:
+
+- `validate-model`
+- `run-model`
+- `api`

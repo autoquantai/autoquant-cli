@@ -1,0 +1,6 @@
+numpy
+pandas
+polygon-api-client
+python-dotenv
+scikit-learn
+typer>=0.12
