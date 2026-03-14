@@ -51,9 +51,8 @@ def run_model(
     reasoning: str = "",
     task: str | None = None,
 ) -> dict[str, Any]:
-    resolved_parent_ids = parent_ids or ["seed"]
-    if len(resolved_parent_ids) < 1 or len(resolved_parent_ids) > 2:
-        raise RuntimeError("parent_ids must contain between 1 and 2 items")
+    if parent_ids is not None and len(parent_ids) > 2:
+        raise RuntimeError("parent_ids must contain at most 2 items")
     source_path = Path(model_path)
     if not source_path.exists():
         raise RuntimeError(f"Model file not found: {source_path}")
@@ -95,7 +94,7 @@ def run_model(
             "task": resolved_task,
             "hyperparameters": selected_hyperparameters,
         },
-        "parent_ids": resolved_parent_ids,
+        "parent_ids": parent_ids,
         "log": log,
         "reasoning": reasoning,
         "evals": _build_evals(output),

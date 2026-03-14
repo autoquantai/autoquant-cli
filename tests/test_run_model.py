@@ -96,6 +96,54 @@ class RunModelTest(unittest.TestCase):
                 ccxt_exchange="binance",
             )
 
+    def test_run_model_posts_null_parent_ids_for_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_file = Path(tmp_dir) / "model.py"
+            model_file.write_text("print('x')\n", encoding="utf-8")
+            calls: list[tuple[str, dict]] = []
+
+            def fake_post_json(path: str, payload: dict) -> dict:
+                calls.append((path, payload))
+                return {"id": "exp-root", "run_id": payload["run_id"]}
+
+            with (
+                patch(
+                    "autoquant_cli.commands.run_model.get_run",
+                    return_value={
+                        "id": "run-1",
+                        "input_ohlc_tickers": [],
+                        "target_ticker": "AAPL",
+                        "data_provider": "massive",
+                        "ccxt_exchange": None,
+                        "from_date": "2026-01-01",
+                        "to_date": "2026-02-28",
+                        "task": "classification",
+                        "train_time_limit_minutes": 12,
+                    },
+                ),
+                patch("autoquant_cli.commands.run_model.ensure_run_prices", return_value="reused"),
+                patch(
+                    "autoquant_cli.commands.run_model.run_train_file",
+                    return_value={
+                        "train": {"selected_hyperparams": {"training_size_days": 21}},
+                        "validation": {"weighted avg": {"f1-score": 0.8}},
+                        "stdout": "ok",
+                        "stderr": "",
+                    },
+                ),
+                patch("autoquant_cli.commands.run_model.post_json", side_effect=fake_post_json),
+            ):
+                run_model(
+                    run_id="run-1",
+                    name="root-candidate",
+                    generation=0,
+                    model_path=str(model_file),
+                    log="root",
+                )
+
+            _, payload = calls[0]
+            self.assertIsNone(payload["parent_ids"])
+
 
 if __name__ == "__main__":
     unittest.main()
