@@ -66,9 +66,8 @@ class DataTest(unittest.TestCase):
             self.assertEqual(len(frame), 5)
             self.assertEqual(len(merged_rows), 5)
             self.assertEqual(len(raw_rows), 10)
-            self.assertIn("aapl_open", merged_rows[0])
+            self.assertIn("open", merged_rows[0])
             self.assertIn("msft_open", merged_rows[0])
-            self.assertNotIn("open", merged_rows[0])
             self.assertNotIn("ticker", merged_rows[0])
 
     def test_ensure_run_prices_rejects_large_merge_gaps(self) -> None:

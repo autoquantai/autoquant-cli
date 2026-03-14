@@ -70,7 +70,7 @@ def run_model_command(
     generation: Annotated[int, typer.Option(...)],
     model_path: Annotated[str, typer.Option(...)],
     log: Annotated[str, typer.Option(...)],
-    parent_id: Annotated[str, typer.Option()] = "",
+    parent_ids: Annotated[list[str] | None, typer.Option()] = None,
     reasoning: Annotated[str, typer.Option()] = "",
     task: Annotated[str, typer.Option()] = "",
 ) -> None:
@@ -81,7 +81,7 @@ def run_model_command(
             generation=generation,
             model_path=model_path,
             log=log,
-            parent_id=parent_id or None,
+            parent_ids=parent_ids or None,
             reasoning=reasoning,
             task=task or None,
         )

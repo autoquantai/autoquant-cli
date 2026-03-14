@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import csv
-import json
 import logging
-import os
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,9 +17,8 @@ from autoquant_cli.quant.run_metadata_validation import DEFAULT_DATA_PROVIDER, R
 
 logger = logging.getLogger(__name__)
 
-PRICES_RELATIVE_PATH = Path("data/prices.csv")
-RAW_PRICES_RELATIVE_PATH = Path("data/raw_prices.csv")
-RUN_METADATA_RELATIVE_PATH = Path("data/run_metadata.json")
+PRICES_RELATIVE_PATH = Path("data/run_dataset.csv")
+RAW_PRICES_RELATIVE_PATH = Path("data/ohlcv.csv")
 OHLCV_COLUMNS = ["timestamp", "ticker", "open", "high", "low", "close", "volume"]
 OHLCV_REQUIRED_COLUMNS = ("timestamp", "open", "high", "low", "close", "volume")
 DEFAULT_TRAINING_SIZE_DAYS = 15
@@ -55,10 +52,6 @@ def raw_prices_path(run_id: str) -> Path:
     return run_dir(run_id) / RAW_PRICES_RELATIVE_PATH
 
 
-def run_metadata_path(run_id: str) -> Path:
-    return run_dir(run_id) / RUN_METADATA_RELATIVE_PATH
-
-
 def read_csv(path: Path) -> list[dict[str, str]]:
     if not path.exists() or path.stat().st_size == 0:
         return []
@@ -77,17 +70,6 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
         writer.writerows(rows)
 
 
-def write_json(path: Path, payload: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
-
-
-def read_json(path: Path) -> dict[str, object]:
-    if not path.exists() or path.stat().st_size == 0:
-        return {}
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def upsert_csv(path: Path, fieldnames: list[str], key_fields: list[str], rows: list[dict[str, str]]) -> None:
     with CSV_LOCK:
         existing = read_csv(path)
@@ -102,30 +84,6 @@ def upsert_csv(path: Path, fieldnames: list[str], key_fields: list[str], rows: l
             if all(key):
                 index[key] = normalized
         write_csv(path, fieldnames, list(index.values()))
-
-
-def save_run_market_config(run_id: str, market_config: RunMarketConfig) -> None:
-    write_json(
-        run_metadata_path(run_id),
-        {
-            "input_ohlc_tickers": market_config.input_ohlc_tickers,
-            "target_ticker": market_config.target_ticker,
-            "data_provider": market_config.data_provider,
-            "ccxt_exchange": market_config.ccxt_exchange,
-        },
-    )
-
-
-def load_run_market_config(run_id: str) -> RunMarketConfig:
-    payload = read_json(run_metadata_path(run_id))
-    if not payload:
-        raise RuntimeError(f"Run market config not found for run_id={run_id}")
-    return validate_run_market_config(
-        input_ohlc_tickers=list(payload.get("input_ohlc_tickers") or []),
-        target_ticker=str(payload.get("target_ticker") or ""),
-        data_provider=str(payload.get("data_provider") or DEFAULT_DATA_PROVIDER),
-        ccxt_exchange=str(payload["ccxt_exchange"]) if payload.get("ccxt_exchange") else None,
-    )
 
 
 def _stringify_cell(value: object) -> str:
@@ -272,13 +230,7 @@ def ensure_run_prices(
         ccxt_exchange=ccxt_exchange,
     )
     path = raw_prices_path(run_id)
-    metadata_path = run_metadata_path(run_id)
     existing = read_csv(path)
-    if existing and metadata_path.exists():
-        existing_config = load_run_market_config(run_id)
-        if existing_config != market_config:
-            force_refresh = True
-    save_run_market_config(run_id, market_config)
     existing_tickers = {str(row.get("ticker") or "") for row in existing}
     requested_tickers = market_config.all_tickers
     tickers_to_fetch = requested_tickers if force_refresh else [ticker for ticker in requested_tickers if ticker not in existing_tickers]
@@ -338,9 +290,7 @@ def _clean_merged_frame(run_id: str) -> pd.DataFrame:
     frame = pd.DataFrame(read_csv(prices_path(run_id)))
     if frame.empty:
         raise RuntimeError(f"No merged OHLCV rows found for run_id={run_id}")
-    market_config = load_run_market_config(run_id)
-    target_columns = _prefixed_ohlcv_columns(market_config.target_ticker)
-    missing_columns = [name for name in ["timestamp", *target_columns.values()] if name not in frame.columns]
+    missing_columns = [name for name in ["timestamp", "open", "high", "low", "close", "volume"] if name not in frame.columns]
     if missing_columns:
         raise RuntimeError(f"OHLCV missing columns: {','.join(missing_columns)}")
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True, errors="coerce")
@@ -349,8 +299,6 @@ def _clean_merged_frame(run_id: str) -> pd.DataFrame:
     for column in numeric_columns:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     frame = frame.dropna(subset=numeric_columns).sort_values("timestamp").reset_index(drop=True)
-    for name, column in target_columns.items():
-        frame[name] = frame[column]
     return frame
 
 
@@ -359,7 +307,7 @@ def _build_target_frame(frame: pd.DataFrame, target_ticker: str) -> pd.DataFrame
     if target_frame.empty:
         raise RuntimeError(f"No OHLCV rows found for target_ticker={target_ticker}")
     target_frame = target_frame.drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp").reset_index(drop=True)
-    return target_frame.rename(columns=_prefixed_ohlcv_columns(target_ticker))
+    return target_frame
 
 
 def _merge_input_ticker(base_frame: pd.DataFrame, frame: pd.DataFrame, ticker: str) -> pd.DataFrame:

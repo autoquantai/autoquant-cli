@@ -66,7 +66,7 @@ class RunModelTest(unittest.TestCase):
                     generation=2,
                     model_path=str(model_file),
                     log="test log",
-                    parent_id="parent-1",
+                    parent_ids=["parent-1"],
                     reasoning="why",
                     task=None,
                 )
@@ -79,7 +79,7 @@ class RunModelTest(unittest.TestCase):
             self.assertEqual(payload["run_id"], "run-1")
             self.assertEqual(payload["name"], "candidate-1")
             self.assertEqual(payload["generation"], 2)
-            self.assertEqual(payload["parent_id"], "parent-1")
+            self.assertEqual(payload["parent_ids"], ["parent-1"])
             self.assertEqual(payload["reasoning"], "why")
             self.assertEqual(payload["error"], None)
             self.assertIn("source", payload["model"])

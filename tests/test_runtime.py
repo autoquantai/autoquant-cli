@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import json
 import logging
 import os
 import tempfile
@@ -20,7 +19,7 @@ def write_prices(prices_file: Path, hours: int) -> None:
     with prices_file.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(
             file,
-            fieldnames=["timestamp", "aapl_open", "aapl_high", "aapl_low", "aapl_close", "aapl_volume"],
+            fieldnames=["timestamp", "open", "high", "low", "close", "volume"],
         )
         writer.writeheader()
         started_at = datetime(2026, 1, 1, tzinfo=UTC)
@@ -28,39 +27,21 @@ def write_prices(prices_file: Path, hours: int) -> None:
             writer.writerow(
                 {
                     "timestamp": (started_at + timedelta(hours=index)).isoformat(),
-                    "aapl_open": "1",
-                    "aapl_high": "2",
-                    "aapl_low": "0",
-                    "aapl_close": str(index % 2),
-                    "aapl_volume": "100",
+                    "open": "1",
+                    "high": "2",
+                    "low": "0",
+                    "close": str(index % 2),
+                    "volume": "100",
                 }
             )
-
-
-def write_run_metadata(home_path: Path, run_id: str, target_ticker: str = "AAPL", input_ohlc_tickers: list[str] | None = None) -> None:
-    metadata_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / run_id / "data" / "run_metadata.json"
-    metadata_file.parent.mkdir(parents=True, exist_ok=True)
-    metadata_file.write_text(
-        json.dumps(
-            {
-                "input_ohlc_tickers": input_ohlc_tickers or [],
-                "target_ticker": target_ticker,
-                "data_provider": "massive",
-                "ccxt_exchange": None,
-            },
-            ensure_ascii=True,
-        ),
-        encoding="utf-8",
-    )
 
 
 class RuntimeTest(unittest.TestCase):
     def test_run_train_file_supports_quant_model_base_import_in_sandbox(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             home_path = Path(tmp_dir)
-            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-1" / "data" / "prices.csv"
+            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-1" / "data" / "run_dataset.csv"
             write_prices(prices_file, 72)
-            write_run_metadata(home_path, "run-1")
             model_file = Path(tmp_dir) / "model.py"
             model_file.write_text(
                 "\n".join(
@@ -105,9 +86,8 @@ class RuntimeTest(unittest.TestCase):
     def test_run_train_file_rejects_short_default_window(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             home_path = Path(tmp_dir)
-            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-2" / "data" / "prices.csv"
+            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-2" / "data" / "run_dataset.csv"
             write_prices(prices_file, 72)
-            write_run_metadata(home_path, "run-2")
             model_file = Path(tmp_dir) / "model.py"
             model_file.write_text(
                 "\n".join(
@@ -143,9 +123,8 @@ class RuntimeTest(unittest.TestCase):
     def test_run_train_file_samples_dict_based_hyperparameters_in_sandbox(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             home_path = Path(tmp_dir)
-            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-3" / "data" / "prices.csv"
+            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-3" / "data" / "run_dataset.csv"
             write_prices(prices_file, 72)
-            write_run_metadata(home_path, "run-3")
             model_file = Path(tmp_dir) / "search_space_model.py"
             model_file.write_text(
                 "\n".join(
