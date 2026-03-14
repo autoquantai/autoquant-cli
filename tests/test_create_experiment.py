@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from smartpy.utility.log_util import getLogger
-
 from autoquant_cli.create_experiment import create_experiment
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class CreateExperimentTest(unittest.TestCase):

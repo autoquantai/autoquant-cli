@@ -4,14 +4,13 @@ import io
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from inspect import isabstract
+import logging
 from pathlib import Path
-
-from smartpy.utility.log_util import getLogger
 
 from autoquant_cli.data import DEFAULT_TEST_SIZE_DAYS, DEFAULT_TRAINING_SIZE_DAYS, DEFAULT_TRAIN_TIME_LIMIT_MINUTES
 from autoquant_cli.model_base import AutoQuantModel
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _validate_metrics_payload(payload: object) -> dict[str, object]:

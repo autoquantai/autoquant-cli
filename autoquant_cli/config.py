@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from smartpy.utility.log_util import getLogger
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 def get_workspace_root() -> Path:
     value = os.getenv("AUTOQUANT_WORKSPACE", "").strip()

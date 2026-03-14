@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
-
-from smartpy.utility.log_util import getLogger
 
 from autoquant_cli.api_client import post_json
 from autoquant_cli.data import ensure_run_prices, get_fetch_from_date, run_dir
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def create_experiment(

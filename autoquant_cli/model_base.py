@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 import time
 from abc import ABC, abstractmethod
@@ -17,11 +18,10 @@ from sklearn.metrics import (
     median_absolute_error,
     r2_score,
 )
-from smartpy.utility.log_util import getLogger
 
 from autoquant_cli.data import get_splits, load_dataset
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def walk_forward(

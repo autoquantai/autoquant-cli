@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from smartpy.utility.log_util import getLogger
-
 from autoquant_cli.config import get_api_key, get_backend_base_url
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def normalize_api_path(path: str) -> str:

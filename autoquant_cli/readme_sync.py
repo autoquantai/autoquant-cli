@@ -1,14 +1,13 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any
 
-from smartpy.utility.log_util import getLogger
-
 from autoquant_cli.data import workspace_root
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 SETUP_REPO_URL = "https://github.com/autoquantai/autoquant-setup.git"
 SETUP_REPO_BRANCH = "main"

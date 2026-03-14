@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -10,11 +11,10 @@ from typing import Any
 import pandas as pd
 from polygon import RESTClient
 from sklearn.model_selection import train_test_split
-from smartpy.utility.log_util import getLogger
 
 from autoquant_cli.config import get_massive_api_key, get_workspace_root
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 PRICES_RELATIVE_PATH = Path("data/prices.csv")
 OHLCV_COLUMNS = ["timestamp", "ticker", "open", "high", "low", "close", "volume"]

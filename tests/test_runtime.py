@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
 import tempfile
 import unittest
@@ -8,11 +9,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from smartpy.utility.log_util import getLogger
-
 from autoquant_cli.runtime import run_train_file
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RuntimeTest(unittest.TestCase):
@@ -61,7 +60,11 @@ class RuntimeTest(unittest.TestCase):
                 encoding="utf-8",
             )
             logger.info("Running runtime compatibility test")
-            with patch.dict(os.environ, {"HOME": tmp_dir}, clear=False):
+            with patch.dict(
+                os.environ,
+                {"HOME": tmp_dir, "AUTOQUANT_WORKSPACE": str(home_path / ".nanobot" / "workspace" / "autoquant")},
+                clear=False,
+            ):
                 result = run_train_file(model_file, run_id="run-1", expected_task="classification")
             self.assertIn("train", result)
             self.assertIn("validation", result)

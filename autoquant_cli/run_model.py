@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
-
-from smartpy.utility.log_util import getLogger
 
 from autoquant_cli.api_client import get_run, post_json
 from autoquant_cli.data import DEFAULT_TEST_SIZE_DAYS, DEFAULT_TRAINING_SIZE_DAYS, ensure_run_prices
 from autoquant_cli.runtime import run_train_file
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _build_error(output: dict[str, object]) -> str | None:

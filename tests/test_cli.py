@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import logging
 import unittest
 from unittest.mock import patch
 
-from smartpy.utility.log_util import getLogger
 from typer.testing import CliRunner
 
 from autoquant_cli.cli import app
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class CliTest(unittest.TestCase):

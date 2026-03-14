@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from smartpy.utility.log_util import getLogger
-
 from autoquant_cli.validate_model import validate_model
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ValidateModelTest(unittest.TestCase):

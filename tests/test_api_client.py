@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import io
+import logging
 import unittest
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 
-from smartpy.utility.log_util import getLogger
-
 from autoquant_cli.api_client import get_openapi_json, normalize_api_path, post_json
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ApiClientTest(unittest.TestCase):
