@@ -7,8 +7,8 @@ from inspect import isabstract
 import logging
 from pathlib import Path
 
-from autoquant_cli.data import DEFAULT_TEST_SIZE_DAYS, DEFAULT_TRAINING_SIZE_DAYS, DEFAULT_TRAIN_TIME_LIMIT_MINUTES
-from autoquant_cli.model_base import AutoQuantModel
+from autoquant_cli.quant.data import DEFAULT_TRAINING_SIZE_DAYS, DEFAULT_TRAIN_TIME_LIMIT_MINUTES
+from autoquant_cli.quant.model_base import AutoQuantModel
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,8 @@ def run_train_file(
     model_id: str | None = None,
     expected_task: str | None = None,
     training_size_days: int | None = None,
-    test_size_days: int | None = None,
     train_time_limit_minutes: float | None = None,
+    execution_profile: str = "default",
 ) -> dict[str, object]:
     source = path.read_text(encoding="utf-8")
     code = compile(source, str(path), "exec")
@@ -81,8 +81,8 @@ def run_train_file(
             )
             payload = model.run(
                 training_size_days=training_size_days or DEFAULT_TRAINING_SIZE_DAYS,
-                test_size_days=test_size_days or DEFAULT_TEST_SIZE_DAYS,
                 train_time_limit_minutes=train_time_limit_minutes or DEFAULT_TRAIN_TIME_LIMIT_MINUTES,
+                execution_profile=execution_profile,
             )
             validated = _validate_metrics_payload(payload)
             output["train"] = validated["train"]

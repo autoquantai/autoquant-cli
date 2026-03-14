@@ -1,6 +1,6 @@
 from sklearn.ensemble import RandomForestClassifier
 
-from core.model_base import AutoQuantModel
+from autoquant_cli.quant.model_base import AutoQuantModel
 
 
 class LiveTestModelV2(AutoQuantModel):
@@ -26,11 +26,11 @@ class LiveTestModelV2(AutoQuantModel):
         ]
 
     def get_hyperparameter_candidates(self):
-        return [
-            {"n_estimators": 100, "max_depth": 3, "min_samples_leaf": 5},
-            {"n_estimators": 200, "max_depth": 4, "min_samples_leaf": 3},
-            {"n_estimators": 300, "max_depth": 5, "min_samples_leaf": 2},
-        ]
+        return {
+            "n_estimators": [100, 200, 300],
+            "max_depth": (3, 5),
+            "min_samples_leaf": [2, 3, 5],
+        }
 
     def fit(self, x_train, y_train, hyperparams):
         self.model = RandomForestClassifier(

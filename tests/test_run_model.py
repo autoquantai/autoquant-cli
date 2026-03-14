@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autoquant_cli.run_model import run_model
+from autoquant_cli.commands.run_model import run_model
 
 logger = logging.getLogger(__name__)
 
@@ -22,29 +22,42 @@ class RunModelTest(unittest.TestCase):
                 calls.append((path, payload))
                 return {"id": "exp-1", "run_id": payload["run_id"]}
 
+            ensure_run_prices_mock = None
             with (
                 patch(
-                    "autoquant_cli.run_model.get_run",
+                    "autoquant_cli.commands.run_model.get_run",
                     return_value={
                         "id": "run-1",
-                        "ticker": "AAPL",
+                        "input_ohlc_tickers": ["MSFT"],
+                        "target_ticker": "AAPL",
+                        "data_provider": "ccxt",
+                        "ccxt_exchange": "binance",
                         "from_date": "2026-01-01",
                         "to_date": "2026-02-28",
                         "task": "classification",
                         "train_time_limit_minutes": 12,
                     },
                 ),
-                patch("autoquant_cli.run_model.ensure_run_prices", return_value="reused"),
+                patch("autoquant_cli.commands.run_model.ensure_run_prices", return_value="reused") as ensure_run_prices_mock,
                 patch(
-                    "autoquant_cli.run_model.run_train_file",
+                    "autoquant_cli.commands.run_model.run_train_file",
                     return_value={
-                        "train": {"weighted_f1": 0.9},
-                        "validation": {"weighted_f1": 0.8},
+                        "train": {
+                            "weighted avg": {"f1-score": 0.9},
+                            "selected_hyperparams": {"training_size_days": 21, "max_depth": 4},
+                        },
+                        "validation": {
+                            "0": {"precision": 1.0, "recall": 1.0, "f1-score": 1.0, "support": 1.0},
+                            "1": {"precision": 0.6, "recall": 1.0, "f1-score": 0.75, "support": 1.0},
+                            "accuracy": 0.8,
+                            "macro avg": {"precision": 0.8, "recall": 1.0, "f1-score": 0.875, "support": 2.0},
+                            "weighted avg": {"precision": 0.8, "recall": 0.8, "f1-score": 0.8, "support": 2.0},
+                        },
                         "stdout": "ok",
                         "stderr": "",
                     },
                 ),
-                patch("autoquant_cli.run_model.post_json", side_effect=fake_post_json),
+                patch("autoquant_cli.commands.run_model.post_json", side_effect=fake_post_json),
             ):
                 logger.info("Testing run-model payload mapping")
                 result = run_model(
@@ -70,8 +83,18 @@ class RunModelTest(unittest.TestCase):
             self.assertEqual(payload["reasoning"], "why")
             self.assertEqual(payload["error"], None)
             self.assertIn("source", payload["model"])
-            self.assertEqual(payload["evals"]["validation"], {"weighted_f1": 0.8})
+            self.assertEqual(payload["model"]["hyperparameters"], {"training_size_days": 21, "max_depth": 4})
+            self.assertEqual(payload["evals"]["validation"]["weighted avg"]["f1-score"], 0.8)
             self.assertEqual(payload["evals"]["stdout"], "ok")
+            ensure_run_prices_mock.assert_called_once_with(
+                "run-1",
+                ["MSFT"],
+                "AAPL",
+                "2026-01-01",
+                "2026-02-28",
+                data_provider="ccxt",
+                ccxt_exchange="binance",
+            )
 
 
 if __name__ == "__main__":

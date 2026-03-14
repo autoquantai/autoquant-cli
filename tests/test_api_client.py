@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 
-from autoquant_cli.api_client import get_openapi_json, normalize_api_path, post_json
+from autoquant_cli.commands.api_client import get_openapi_json, normalize_api_path, post_json
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,9 @@ class ApiClientTest(unittest.TestCase):
         response.__enter__.return_value = response
         response.__exit__.return_value = None
         with (
-            patch("autoquant_cli.api_client.get_backend_base_url", return_value="https://example.com"),
-            patch("autoquant_cli.api_client.get_api_key", return_value="api-key"),
-            patch("autoquant_cli.api_client.urlopen", return_value=response),
+            patch("autoquant_cli.commands.api_client.get_backend_base_url", return_value="https://example.com"),
+            patch("autoquant_cli.commands.api_client.get_api_key", return_value="api-key"),
+            patch("autoquant_cli.commands.api_client.urlopen", return_value=response),
         ):
             logger.info("Testing successful backend response parsing")
             payload = post_json("/experiment/get", {"run_id": "run-1"})
@@ -40,9 +40,9 @@ class ApiClientTest(unittest.TestCase):
             fp=io.BytesIO(b'{"detail":"Run not found"}'),
         )
         with (
-            patch("autoquant_cli.api_client.get_backend_base_url", return_value="https://example.com"),
-            patch("autoquant_cli.api_client.get_api_key", return_value="api-key"),
-            patch("autoquant_cli.api_client.urlopen", side_effect=error),
+            patch("autoquant_cli.commands.api_client.get_backend_base_url", return_value="https://example.com"),
+            patch("autoquant_cli.commands.api_client.get_api_key", return_value="api-key"),
+            patch("autoquant_cli.commands.api_client.urlopen", side_effect=error),
         ):
             with self.assertRaises(RuntimeError) as context:
                 post_json("/experiment/get", {"run_id": "run-1"})
@@ -54,8 +54,8 @@ class ApiClientTest(unittest.TestCase):
         response.__enter__.return_value = response
         response.__exit__.return_value = None
         with (
-            patch("autoquant_cli.api_client.get_backend_base_url", return_value="https://example.com"),
-            patch("autoquant_cli.api_client.urlopen", return_value=response),
+            patch("autoquant_cli.commands.api_client.get_backend_base_url", return_value="https://example.com"),
+            patch("autoquant_cli.commands.api_client.urlopen", return_value=response),
         ):
             payload = get_openapi_json()
         self.assertEqual(payload, {"openapi": "3.1.0", "info": {"title": "AutoQuant API"}})

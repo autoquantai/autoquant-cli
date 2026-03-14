@@ -1,6 +1,6 @@
 from sklearn.linear_model import LogisticRegression
 
-from core.model_base import AutoQuantModel
+from autoquant_cli.quant.model_base import AutoQuantModel
 
 
 class LiveTestModel(AutoQuantModel):

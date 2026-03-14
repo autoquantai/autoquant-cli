@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from autoquant_cli.create_experiment import create_experiment
+from autoquant_cli.commands.create_experiment import create_experiment
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,10 @@ class CreateExperimentTest(unittest.TestCase):
                 return {
                     "id": "run-1",
                     "name": payload["name"],
-                    "ticker": payload["ticker"],
+                    "input_ohlc_tickers": payload["input_ohlc_tickers"],
+                    "target_ticker": payload["target_ticker"],
+                    "data_provider": payload["data_provider"],
+                    "ccxt_exchange": payload["ccxt_exchange"],
                     "from_date": payload["from_date"],
                     "to_date": payload["to_date"],
                     "task": payload["task"],
@@ -32,16 +35,19 @@ class CreateExperimentTest(unittest.TestCase):
                 }
 
             with (
-                patch("autoquant_cli.create_experiment.post_json", side_effect=fake_post_json),
-                patch("autoquant_cli.create_experiment.run_dir", return_value=run_root),
-                patch("autoquant_cli.create_experiment.ensure_run_prices", return_value="downloaded") as ensure_run_prices_mock,
+                patch("autoquant_cli.commands.create_experiment.post_json", side_effect=fake_post_json),
+                patch("autoquant_cli.commands.create_experiment.run_dir", return_value=run_root),
+                patch("autoquant_cli.commands.create_experiment.ensure_run_prices", return_value="downloaded") as ensure_run_prices_mock,
             ):
                 logger.info("Testing create-experiment payload mapping")
                 result = create_experiment(
                     name="test-run",
-                    ticker="AAPL",
-                    from_date="2026-01-01",
-                    to_date="2026-02-28",
+                    input_ohlc_tickers=["MSFT", "QQQ"],
+                    target_ticker="AAPL",
+                    data_provider="ccxt",
+                    ccxt_exchange="kraken",
+                    from_date="2025-01-01",
+                    to_date="2026-01-01",
                     task="classification",
                     max_experiments=12,
                     train_time_limit_minutes=45,
@@ -54,9 +60,12 @@ class CreateExperimentTest(unittest.TestCase):
                 payload,
                 {
                     "name": "test-run",
-                    "ticker": "AAPL",
-                    "from_date": "2026-01-01",
-                    "to_date": "2026-02-28",
+                    "input_ohlc_tickers": ["MSFT", "QQQ"],
+                    "target_ticker": "AAPL",
+                    "data_provider": "ccxt",
+                    "ccxt_exchange": "kraken",
+                    "from_date": "2025-01-01",
+                    "to_date": "2026-01-01",
                     "task": "classification",
                     "max_experiments": 12,
                     "train_time_limit_minutes": 45,
@@ -64,15 +73,39 @@ class CreateExperimentTest(unittest.TestCase):
             )
             ensure_run_prices_mock.assert_called_once_with(
                 "run-1",
+                ["MSFT", "QQQ"],
                 "AAPL",
+                "2025-01-01",
                 "2026-01-01",
-                "2026-02-28",
+                data_provider="ccxt",
+                ccxt_exchange="kraken",
                 force_refresh=False,
             )
             self.assertEqual(result["id"], "run-1")
             self.assertEqual(result["run_dir"], str(run_root))
-            self.assertEqual(result["fetch_from_date"], "2025-12-02")
             self.assertEqual(result["data_source"], "downloaded")
+
+    def test_create_experiment_rejects_short_window_before_side_effects(self) -> None:
+        with (
+            patch("autoquant_cli.commands.create_experiment.post_json") as post_json_mock,
+            patch("autoquant_cli.commands.create_experiment.ensure_run_prices") as ensure_run_prices_mock,
+        ):
+            with self.assertRaises(RuntimeError) as context:
+                create_experiment(
+                    name="test-run",
+                    input_ohlc_tickers=[],
+                    target_ticker="AAPL",
+                    data_provider="massive",
+                    ccxt_exchange=None,
+                    from_date="2026-02-10",
+                    to_date="2026-08-20",
+                    task="classification",
+                    max_experiments=12,
+                    train_time_limit_minutes=45,
+                )
+        self.assertIn("Experiment requires at least 365 days of data", str(context.exception))
+        post_json_mock.assert_not_called()
+        ensure_run_prices_mock.assert_not_called()
 
 
 if __name__ == "__main__":

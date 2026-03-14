@@ -25,8 +25,6 @@ class CliTest(unittest.TestCase):
         self.assertIn("api", result.stdout)
         self.assertIn("health", result.stdout)
         self.assertIn("get-openapi", result.stdout)
-        self.assertIn("get-readme-diff", result.stdout)
-        self.assertIn("run-update", result.stdout)
 
     def test_api_command_rejects_invalid_json(self) -> None:
         result = self.runner.invoke(app, ["api", "/experiment/get", "{bad"])
@@ -52,18 +50,6 @@ class CliTest(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.output, '{\n  "openapi": "3.1.0",\n  "info": {\n    "title": "AutoQuant API"\n  }\n}\n')
 
-    def test_get_readme_diff_command_prints_json(self) -> None:
-        with patch("autoquant_cli.cli.get_readme_diff", return_value={"has_changes": True}):
-            result = self.runner.invoke(app, ["get-readme-diff"])
-        self.assertEqual(result.exit_code, 0)
-        self.assertEqual(result.output.strip(), '{"has_changes": true}')
-
-    def test_run_update_command_prints_json(self) -> None:
-        with patch("autoquant_cli.cli.run_update", return_value={"exit_code": 0}):
-            result = self.runner.invoke(app, ["run-update"])
-        self.assertEqual(result.exit_code, 0)
-        self.assertEqual(result.output.strip(), '{"exit_code": 0}')
-
     def test_create_experiment_command_prints_json(self) -> None:
         with patch("autoquant_cli.cli.create_experiment", return_value={"id": "run-1", "data_source": "downloaded"}):
             result = self.runner.invoke(
@@ -72,18 +58,47 @@ class CliTest(unittest.TestCase):
                     "create-experiment",
                     "--name",
                     "test-run",
-                    "--ticker",
+                    "--input-ohlc-tickers",
+                    "MSFT",
+                    "--input-ohlc-tickers",
+                    "QQQ",
+                    "--target-ticker",
                     "AAPL",
+                    "--data-provider",
+                    "ccxt",
+                    "--ccxt-exchange",
+                    "kraken",
                     "--from-date",
-                    "2026-01-01",
+                    "2025-01-01",
                     "--to-date",
-                    "2026-02-28",
+                    "2026-01-01",
                     "--task",
                     "classification",
                 ],
             )
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.output.strip(), '{"id": "run-1", "data_source": "downloaded"}')
+
+    def test_create_experiment_command_rejects_short_window(self) -> None:
+        result = self.runner.invoke(
+            app,
+            [
+                "create-experiment",
+                "--name",
+                "test-run",
+                "--target-ticker",
+                "AAPL",
+                "--from-date",
+                "2026-02-10",
+                "--to-date",
+                "2026-08-20",
+                "--task",
+                "classification",
+            ],
+        )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIsInstance(result.exception, RuntimeError)
+        self.assertIn("Experiment requires at least 365 days of data", str(result.exception))
 
 
 if __name__ == "__main__":

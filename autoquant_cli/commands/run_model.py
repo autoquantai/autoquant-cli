@@ -4,11 +4,22 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from autoquant_cli.api_client import get_run, post_json
-from autoquant_cli.data import DEFAULT_TEST_SIZE_DAYS, DEFAULT_TRAINING_SIZE_DAYS, ensure_run_prices
-from autoquant_cli.runtime import run_train_file
+from autoquant_cli.commands.api_client import get_run, post_json
+from autoquant_cli.quant.data import DEFAULT_TRAINING_SIZE_DAYS, ensure_run_prices
+from autoquant_cli.quant.run_metadata_validation import validate_run_market_config
+from autoquant_cli.quant.runtime import run_train_file
 
 logger = logging.getLogger(__name__)
+
+
+def _selected_hyperparameters(output: dict[str, object]) -> dict[str, object]:
+    train = output.get("train")
+    if not isinstance(train, dict):
+        return {}
+    selected_hyperparams = train.get("selected_hyperparams")
+    if not isinstance(selected_hyperparams, dict):
+        return {}
+    return dict(selected_hyperparams)
 
 
 def _build_error(output: dict[str, object]) -> str | None:
@@ -45,11 +56,20 @@ def run_model(
         raise RuntimeError(f"Model file not found: {source_path}")
     run = get_run(run_id)
     resolved_task = task or str(run["task"])
+    market_config = validate_run_market_config(
+        input_ohlc_tickers=list(run.get("input_ohlc_tickers") or []),
+        target_ticker=str(run["target_ticker"]),
+        data_provider=str(run.get("data_provider") or "massive"),
+        ccxt_exchange=str(run["ccxt_exchange"]) if run.get("ccxt_exchange") else None,
+    )
     data_source = ensure_run_prices(
         run_id,
-        str(run["ticker"]),
+        market_config.input_ohlc_tickers,
+        market_config.target_ticker,
         str(run["from_date"]),
         str(run["to_date"]),
+        data_provider=market_config.data_provider,
+        ccxt_exchange=market_config.ccxt_exchange,
     )
     output = run_train_file(
         source_path,
@@ -57,9 +77,9 @@ def run_model(
         model_id=source_path.stem,
         expected_task=resolved_task,
         training_size_days=DEFAULT_TRAINING_SIZE_DAYS,
-        test_size_days=DEFAULT_TEST_SIZE_DAYS,
         train_time_limit_minutes=float(run.get("train_time_limit_minutes") or 5.0),
     )
+    selected_hyperparameters = _selected_hyperparameters(output)
     source = source_path.read_text(encoding="utf-8")
     payload = {
         "run_id": run_id,
@@ -67,11 +87,10 @@ def run_model(
         "generation": generation,
         "model": {
             "name": name,
-            "filename": source_path.name,
+            "filepath": str(source_path),
             "source": source,
             "task": resolved_task,
-            "training_size_days": DEFAULT_TRAINING_SIZE_DAYS,
-            "test_size_days": DEFAULT_TEST_SIZE_DAYS,
+            "hyperparameters": selected_hyperparameters,
         },
         "parent_id": parent_id,
         "log": log,

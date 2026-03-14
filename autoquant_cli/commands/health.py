@@ -62,9 +62,9 @@ def health() -> dict[str, Any]:
     env_ok = all(item["present"] for item in env.values())
     backend = _ping_backend()
     return {
-        "ok": bool(env_ok and backend["ok"]),
+        "status": "ok" if env_ok and backend["ok"] else "error",
+        "env_vars_ok": env_ok,
         "env_file": str(ENV_FILE_PATH),
         "env_file_exists": ENV_FILE_PATH.exists(),
-        "env": env,
         "backend": backend,
     }

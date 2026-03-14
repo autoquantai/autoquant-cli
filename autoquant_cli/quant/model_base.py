@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
-import random
 import time
 from abc import ABC, abstractmethod
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Sequence
 
 import numpy as np
 import pandas as pd
+from scipy.stats import randint, uniform
 from sklearn.metrics import (
     classification_report,
     explained_variance_score,
@@ -18,51 +19,33 @@ from sklearn.metrics import (
     median_absolute_error,
     r2_score,
 )
+from sklearn.model_selection import ParameterSampler
 
-from autoquant_cli.data import get_splits, load_dataset
+from autoquant_cli.quant.data import (
+    DEFAULT_TEST_SIZE_DAYS,
+    HYPERPARAM_SEARCH_CANDIDATE_COUNT,
+    HYPERPARAM_TRAINING_SIZE_DAYS_MAX,
+    HYPERPARAM_TRAINING_SIZE_DAYS_MIN,
+    get_splits,
+    load_dataset,
+)
 
 logger = logging.getLogger(__name__)
+SANDBOX_SAMPLE_ROWS = 72
 
 
 def walk_forward(
     start_ts: pd.Timestamp,
     end_ts: pd.Timestamp,
     training_size_days: int,
-    test_size_days: int,
-    first_test_at_start: bool = False,
+    test_size_days: int = DEFAULT_TEST_SIZE_DAYS,
 ):
-    test_start_ts = start_ts if first_test_at_start else start_ts + pd.Timedelta(days=training_size_days)
+    test_start_ts = start_ts + pd.Timedelta(days=training_size_days)
     while test_start_ts < end_ts:
         test_end_ts = min(test_start_ts + pd.Timedelta(days=test_size_days), end_ts + pd.Timedelta(microseconds=1))
         train_start_ts = test_start_ts - pd.Timedelta(days=training_size_days)
         yield train_start_ts, test_start_ts, test_end_ts
         test_start_ts = test_end_ts
-
-
-def _classification_metrics(y_true: Sequence[int], y_pred: Sequence[int]) -> dict[str, float | int | dict[str, float | int]]:
-    true_values = [int(value) for value in y_true]
-    pred_values = [int(value) for value in y_pred]
-    if len(true_values) != len(pred_values):
-        raise RuntimeError("y_true and y_pred must have equal length")
-    if not true_values:
-        raise RuntimeError("y_true and y_pred cannot be empty")
-    report = classification_report(true_values, pred_values, output_dict=True, zero_division=0)
-    class_one = report.get("1", {})
-    macro_avg = report.get("macro avg", {})
-    weighted_avg = report.get("weighted avg", {})
-    n_samples = int(len(true_values))
-    y_dist = float(sum(1 for value in true_values if value == 1) / n_samples)
-    return {
-        "n_samples": n_samples,
-        "accuracy": float(report["accuracy"]),
-        "precision": float(class_one.get("precision", 0.0)),
-        "recall": float(class_one.get("recall", 0.0)),
-        "f1": float(class_one.get("f1-score", 0.0)),
-        "weighted_f1": float(weighted_avg.get("f1-score", 0.0)),
-        "macro_f1": float(macro_avg.get("f1-score", 0.0)),
-        "y_dist": y_dist,
-        "report": report,
-    }
 
 
 def _regression_metrics(y_true: Sequence[float], y_pred: Sequence[float]) -> dict[str, float]:
@@ -84,29 +67,6 @@ def _regression_metrics(y_true: Sequence[float], y_pred: Sequence[float]) -> dic
         "max_error": float(max_error(true_values, pred_values)),
     }
 
-
-def evaluate_predictions(
-    task: str,
-    train_actual: Sequence[float | int],
-    train_pred: Sequence[float | int],
-    validation_actual: Sequence[float | int],
-    validation_pred: Sequence[float | int],
-) -> dict[str, object]:
-    if task == "classification":
-        train_metrics = _classification_metrics([int(value) for value in train_actual], [int(value) for value in train_pred])
-        validation_metrics = _classification_metrics(
-            [int(value) for value in validation_actual],
-            [int(value) for value in validation_pred],
-        )
-        return {"train": train_metrics, "validation": validation_metrics}
-    if task == "regression":
-        train_metrics = _regression_metrics([float(value) for value in train_actual], [float(value) for value in train_pred])
-        validation_metrics = _regression_metrics(
-            [float(value) for value in validation_actual],
-            [float(value) for value in validation_pred],
-        )
-        return {"train": train_metrics, "validation": validation_metrics}
-    raise RuntimeError("task must be classification or regression")
 
 
 class AutoQuantModel(ABC):
@@ -131,16 +91,12 @@ class AutoQuantModel(ABC):
         stem = Path(model_path).stem.strip()
         return stem or "unknown"
 
-    def prepare_data(self) -> pd.DataFrame:
-        frame = load_dataset(self.run_id)
+    def prepare_data(self, min_rows: int = 220) -> pd.DataFrame:
+        frame = load_dataset(self.run_id, min_rows=min_rows)
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True, errors="coerce")
         frame = frame.dropna(subset=["timestamp"]).reset_index(drop=True)
         if frame.empty:
             raise RuntimeError("Dataset is empty")
-        min_ts = frame["timestamp"].min()
-        max_ts = frame["timestamp"].max()
-        if (max_ts - min_ts) < pd.Timedelta(days=30):
-            raise RuntimeError("Dataset must span at least 30 days")
         return frame
 
     @abstractmethod
@@ -156,79 +112,93 @@ class AutoQuantModel(ABC):
             raise RuntimeError("Split alignment error")
         return train_frame, validation_frame
 
-    def _get_attempted_window_count(
-        self,
-        frame: pd.DataFrame,
-        training_size_days: int,
-        test_size_days: int,
-        first_test_at_start: bool = False,
-    ) -> int:
-        if frame.empty:
-            return 0
-        start_ts = frame["timestamp"].min()
-        end_ts = frame["timestamp"].max()
-        return sum(
-            1
-            for _ in walk_forward(
-                start_ts=start_ts,
-                end_ts=end_ts,
-                training_size_days=training_size_days,
-                test_size_days=test_size_days,
-                first_test_at_start=first_test_at_start,
-            )
-        )
-
-    def _enforce_min_windows(
-        self,
-        partition_name: str,
-        frame: pd.DataFrame,
-        training_size_days: int,
-        test_size_days: int,
-        min_windows: int,
-        first_test_at_start: bool = False,
-    ) -> None:
-        attempted = self._get_attempted_window_count(
-            frame=frame,
-            training_size_days=training_size_days,
-            test_size_days=test_size_days,
-            first_test_at_start=first_test_at_start,
-        )
-        if attempted < min_windows:
-            raise RuntimeError(
-                f"{partition_name} requires at least {min_windows} walk-forward windows but got {attempted} "
-                f"for training_size_days={training_size_days} test_size_days={test_size_days}"
-            )
-
-    def validate_model(
-        self,
-        train_frame: pd.DataFrame,
-        validation_frame: pd.DataFrame,
-        training_size_days: int,
-        test_size_days: int,
-    ) -> None:
-        if training_size_days <= 0 or test_size_days <= 0:
-            raise RuntimeError("training_size_days and test_size_days must be > 0")
-        validation_start = validation_frame["timestamp"].min()
-        lookback_start = validation_start - pd.Timedelta(days=training_size_days)
-        if train_frame["timestamp"].min() > lookback_start:
-            raise RuntimeError(
-                f"Train partition does not provide enough lookback for validation: need data from {lookback_start} "
-                f"but train starts at {train_frame['timestamp'].min()}"
-            )
-        self._enforce_min_windows("train", train_frame, training_size_days, test_size_days, 4)
-        self._enforce_min_windows("validation", validation_frame, training_size_days, test_size_days, 2, True)
-
     def evaluate(
         self,
-        train_actual: list[float | int],
-        train_pred: list[float | int],
-        validation_actual: list[float | int],
-        validation_pred: list[float | int],
+        task: str,
+        train_actual: Sequence[float | int],
+        train_pred: Sequence[float | int],
+        validation_actual: Sequence[float | int],
+        validation_pred: Sequence[float | int],
     ) -> dict[str, object]:
-        return evaluate_predictions(self.task, train_actual, train_pred, validation_actual, validation_pred)
+        if task == "classification":
+            if len(train_actual) != len(train_pred) or len(validation_actual) != len(validation_pred):
+                raise RuntimeError("y_true and y_pred must have equal length")
+            if not train_actual or not validation_actual:
+                raise RuntimeError("y_true and y_pred cannot be empty")
+            train_report = classification_report(train_actual, train_pred, output_dict=True, zero_division=0)
+            validation_report = classification_report(validation_actual, validation_pred, output_dict=True, zero_division=0)
+            return {"train": train_report, "validation": validation_report}
+        if task == "regression":
+            train_metrics = _regression_metrics([float(value) for value in train_actual], [float(value) for value in train_pred])
+            validation_metrics = _regression_metrics(
+                [float(value) for value in validation_actual],
+                [float(value) for value in validation_pred],
+            )
+            return {"train": train_metrics, "validation": validation_metrics}
+        raise RuntimeError("task must be classification or regression")
 
-    def get_hyperparameter_candidates(self) -> list[dict[str, object]]:
-        return [{}]
+
+    def _normalize_hyperparameter_space(self, search_space: dict[str, object]) -> dict[str, object]:
+        normalized: dict[str, object] = {}
+        for name, spec in search_space.items():
+            if isinstance(spec, range):
+                values = list(spec)
+                if not values:
+                    raise RuntimeError("Hyperparameter range cannot be empty")
+                normalized[name] = values
+                continue
+            if isinstance(spec, list):
+                if not spec:
+                    raise RuntimeError("Hyperparameter choices cannot be empty")
+                normalized[name] = spec
+                continue
+            if isinstance(spec, tuple):
+                if len(spec) == 2 and all(isinstance(value, Real) and not isinstance(value, bool) for value in spec):
+                    lower, upper = spec
+                    if float(lower) > float(upper):
+                        raise RuntimeError("Hyperparameter numeric range must be ordered")
+                    if float(lower) == float(upper):
+                        normalized[name] = [lower]
+                        continue
+                    if all(isinstance(value, Integral) and not isinstance(value, bool) for value in spec):
+                        normalized[name] = randint(int(lower), int(upper) + 1)
+                        continue
+                    normalized[name] = uniform(float(lower), float(upper) - float(lower))
+                    continue
+                if not spec:
+                    raise RuntimeError("Hyperparameter choices cannot be empty")
+                normalized[name] = list(spec)
+                continue
+            normalized[name] = [spec]
+        return normalized
+
+    def _build_hyperparameter_candidates(self) -> list[dict[str, object]]:
+        search_space = self.get_hyperparameter_candidates() or {}
+        if not isinstance(search_space, dict):
+            raise RuntimeError("get_hyperparameter_candidates must return a dict[str, object]")
+        candidate_space = dict(search_space)
+        if "training_size_days" in candidate_space:
+            raise RuntimeError("training_size_days is reserved and added automatically")
+        candidate_space["training_size_days"] = (
+            HYPERPARAM_TRAINING_SIZE_DAYS_MIN,
+            HYPERPARAM_TRAINING_SIZE_DAYS_MAX,
+        )
+        normalized_space = self._normalize_hyperparameter_space(candidate_space)
+        return list(ParameterSampler(normalized_space, n_iter=HYPERPARAM_SEARCH_CANDIDATE_COUNT, random_state=42))
+
+    def _build_single_hyperparameter_candidate(self) -> dict[str, object]:
+        search_space = self.get_hyperparameter_candidates() or {}
+        if not isinstance(search_space, dict):
+            raise RuntimeError("get_hyperparameter_candidates must return a dict[str, object]")
+        if "training_size_days" in search_space:
+            raise RuntimeError("training_size_days is reserved and added automatically")
+        if not search_space:
+            return {}
+        normalized_space = self._normalize_hyperparameter_space(dict(search_space))
+        return list(ParameterSampler(normalized_space, n_iter=1, random_state=42))[0]
+
+    def get_hyperparameter_candidates(self) -> dict[str, object]:
+        return {}
 
     @abstractmethod
     def fit(
@@ -245,7 +215,10 @@ class AutoQuantModel(ABC):
 
     def _selection_score(self, metrics: dict[str, object]) -> float:
         if self.task == "classification":
-            return float(metrics["weighted_f1"])
+            weighted_avg = metrics.get("weighted avg")
+            if not isinstance(weighted_avg, dict):
+                raise RuntimeError("classification metrics must include weighted avg")
+            return float(weighted_avg["f1-score"])
         return float(metrics["r2"])
 
     def _walk_forward_predict(
@@ -253,7 +226,6 @@ class AutoQuantModel(ABC):
         frame: pd.DataFrame,
         feature_names: list[str],
         training_size_days: int,
-        test_size_days: int,
         hyperparams: dict[str, object],
         test_range_start_ts: pd.Timestamp | None = None,
         test_range_end_ts: pd.Timestamp | None = None,
@@ -263,19 +235,16 @@ class AutoQuantModel(ABC):
         if test_range_start_ts is not None and test_range_end_ts is not None:
             start_ts = test_range_start_ts
             end_ts = test_range_end_ts
-            first_test_at_start = True
         else:
             start_ts = frame["timestamp"].min()
             end_ts = frame["timestamp"].max()
-            first_test_at_start = False
+
         actual: list[float | int] = []
         predicted: list[float | int] = []
         for train_start_ts, test_start_ts, test_end_ts in walk_forward(
             start_ts=start_ts,
             end_ts=end_ts,
             training_size_days=training_size_days,
-            test_size_days=test_size_days,
-            first_test_at_start=first_test_at_start,
         ):
             train_window = frame[(frame["timestamp"] >= train_start_ts) & (frame["timestamp"] < test_start_ts)]
             test_window = frame[(frame["timestamp"] >= test_start_ts) & (frame["timestamp"] < test_end_ts)]
@@ -307,23 +276,99 @@ class AutoQuantModel(ABC):
         actual: list[float | int],
         predicted: list[float | int],
     ) -> dict[str, object]:
-        paired = self.evaluate(actual, predicted, actual, predicted)
+        paired = self.evaluate(self.task, actual, predicted, actual, predicted)
         metrics = paired["train"]
         if not isinstance(metrics, dict):
             raise RuntimeError("Invalid metrics payload from evaluate")
         return metrics
+
+    def _split_sandbox_data(self, frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        if len(frame) < 2:
+            raise RuntimeError("Sandbox dataset must contain at least 2 rows")
+        split_idx = max(1, len(frame) - max(1, len(frame) // 3))
+        split_idx = min(split_idx, len(frame) - 1)
+        train_frame = frame.iloc[:split_idx].reset_index(drop=True)
+        validation_frame = frame.iloc[split_idx:].reset_index(drop=True)
+        if train_frame.empty or validation_frame.empty:
+            raise RuntimeError("Sandbox split produced an empty partition")
+        if self.task == "classification" and train_frame["target"].nunique() < 2:
+            raise RuntimeError("Sandbox train target needs both classes")
+        return train_frame, validation_frame
+
+    def _fit_predict_once(
+        self,
+        train_frame: pd.DataFrame,
+        validation_frame: pd.DataFrame,
+        feature_names: list[str],
+        hyperparams: dict[str, object],
+    ) -> tuple[list[float | int], list[float | int], list[float | int], list[float | int]]:
+        x_train = train_frame[feature_names]
+        y_train = train_frame["target"]
+        x_validation = validation_frame[feature_names]
+        y_validation = validation_frame["target"]
+        self.artifacts = {}
+        self.fit(x_train, y_train, hyperparams)
+        train_pred = list(self.predict(x_train))
+        validation_pred = list(self.predict(x_validation))
+        if len(train_pred) != len(x_train):
+            raise RuntimeError("predict output length must match x_train length")
+        if len(validation_pred) != len(x_validation):
+            raise RuntimeError("predict output length must match x_validation length")
+        if self.task == "classification":
+            return (
+                y_train.astype(int).tolist(),
+                [int(value) for value in train_pred],
+                y_validation.astype(int).tolist(),
+                [int(value) for value in validation_pred],
+            )
+        return (
+            y_train.astype(float).tolist(),
+            [float(value) for value in train_pred],
+            y_validation.astype(float).tolist(),
+            [float(value) for value in validation_pred],
+        )
+
+    def _sample_sandbox_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
+        sample_size = min(len(frame), SANDBOX_SAMPLE_ROWS)
+        return frame.tail(sample_size).reset_index(drop=True)
+
+    def _run_sandbox(self, train_time_limit_minutes: float) -> dict[str, object]:
+        frame = self.prepare_data(min_rows=2)
+        frame = self._sample_sandbox_frame(frame)
+        prepared, feature_names = self.create_features(frame)
+        prepared = prepared.reset_index(drop=True)
+        train_frame, validation_frame = self._split_sandbox_data(prepared)
+        hyperparams = self._build_single_hyperparameter_candidate()
+        train_actual, train_pred, validation_actual, validation_pred = self._fit_predict_once(
+            train_frame,
+            validation_frame,
+            feature_names,
+            hyperparams,
+        )
+        metrics = self.evaluate(self.task, train_actual, train_pred, validation_actual, validation_pred)
+        train_metrics = dict(metrics["train"])
+        validation_metrics = dict(metrics["validation"])
+        selected_hyperparams = dict(hyperparams)
+        selected_hyperparams["training_size_days"] = 3
+        train_metrics["selected_hyperparams"] = selected_hyperparams
+        train_metrics["hyperparam_candidates_attempted"] = 1
+        train_metrics["hyperparam_search_elapsed_minutes"] = 0.0
+        train_metrics["train_time_limit_minutes"] = float(train_time_limit_minutes)
+        self.best_hyperparams = dict(hyperparams)
+        self.selected_training_size_days = 3
+        self.train_metrics = train_metrics
+        return {"train": train_metrics, "validation": validation_metrics}
 
     def train(
         self,
         frame: pd.DataFrame,
         feature_names: list[str],
         training_size_days: int,
-        test_size_days: int,
         train_time_limit_minutes: float,
     ) -> None:
         if train_time_limit_minutes <= 0:
             raise RuntimeError("train_time_limit_minutes must be > 0")
-        candidates = self.get_hyperparameter_candidates() or [{}]
+        candidates = self._build_hyperparameter_candidates()
         best_params: dict[str, object] | None = None
         best_metrics: dict[str, object] | None = None
         best_score: float | None = None
@@ -335,16 +380,14 @@ class AutoQuantModel(ABC):
         for candidate in candidates:
             if attempted_count > 0 and (time.monotonic() - started_at) >= time_limit_seconds:
                 break
-            candidate_params = dict(candidate or {})
-            candidate_training_size_days = int(random.randint(15, max(15, training_size_days)))
-            candidate_params["training_size_days"] = candidate_training_size_days
+            candidate_params = dict(candidate)
+            candidate_training_size_days = int(candidate_params["training_size_days"])
             attempted_count += 1
             try:
                 actual, predicted = self._walk_forward_predict(
                     frame=frame,
                     feature_names=feature_names,
                     training_size_days=candidate_training_size_days,
-                    test_size_days=test_size_days,
                     hyperparams=candidate_params,
                 )
                 metrics = self._metrics_from_predictions(actual, predicted)
@@ -371,15 +414,18 @@ class AutoQuantModel(ABC):
     def run(
         self,
         training_size_days: int = 30,
-        test_size_days: int = 7,
         train_time_limit_minutes: float = 5.0,
+        execution_profile: str = "default",
     ) -> dict[str, object]:
         logger.info("Running model run_id=%s model_id=%s", self.run_id, self.model_id)
+        if execution_profile == "sandbox":
+            return self._run_sandbox(train_time_limit_minutes)
+        if execution_profile != "default":
+            raise RuntimeError(f"Unknown execution_profile: {execution_profile}")
         frame = self.prepare_data()
         prepared, feature_names = self.create_features(frame)
         train_frame, validation_frame = self.split_data(prepared, feature_names)
-        self.validate_model(train_frame, validation_frame, training_size_days, test_size_days)
-        self.train(train_frame, feature_names, training_size_days, test_size_days, train_time_limit_minutes)
+        self.train(train_frame, feature_names, training_size_days, train_time_limit_minutes)
         if self.train_metrics is None:
             raise RuntimeError("Training search did not produce metrics")
         resolved_training_size_days = int(self.selected_training_size_days or training_size_days)
@@ -390,7 +436,6 @@ class AutoQuantModel(ABC):
             combined,
             feature_names,
             resolved_training_size_days,
-            test_size_days,
             self.best_hyperparams,
             test_range_start_ts=validation_start,
             test_range_end_ts=validation_end,

@@ -9,6 +9,7 @@ description = "Minimal AutoQuant CLI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "ccxt",
   "numpy",
   "pandas",
   "polygon-api-client",
@@ -22,4 +23,4 @@ autoquant = "autoquant_cli.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["autoquant_cli*", "core*"]
+include = ["autoquant_cli*"]

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.error import URLError
 
-from autoquant_cli.health import health
+from autoquant_cli.commands.health import health
 
 
 class HealthTest(unittest.TestCase):
@@ -15,13 +15,13 @@ class HealthTest(unittest.TestCase):
         response.__enter__.return_value = response
         response.__exit__.return_value = None
         with (
-            patch("autoquant_cli.health.get_env", side_effect=lambda name, required=False: {
+            patch("autoquant_cli.commands.health.get_env", side_effect=lambda name, required=False: {
                 "MASSIVE_API_KEY": "massive",
                 "AUTOQUANT_API_KEY": "api-key",
                 "AUTOQUANT_API_URL": "http://127.0.0.1:8000",
             }.get(name)),
-            patch("autoquant_cli.health.urlopen", return_value=response),
-            patch("autoquant_cli.health.ENV_FILE_PATH", Path("/tmp/test.env")),
+            patch("autoquant_cli.commands.health.urlopen", return_value=response),
+            patch("autoquant_cli.commands.health.ENV_FILE_PATH", Path("/tmp/test.env")),
             patch("pathlib.Path.exists", return_value=True),
         ):
             payload = health()
@@ -31,13 +31,13 @@ class HealthTest(unittest.TestCase):
 
     def test_health_reports_backend_failure(self) -> None:
         with (
-            patch("autoquant_cli.health.get_env", side_effect=lambda name, required=False: {
+            patch("autoquant_cli.commands.health.get_env", side_effect=lambda name, required=False: {
                 "MASSIVE_API_KEY": "massive",
                 "AUTOQUANT_API_KEY": "api-key",
                 "AUTOQUANT_API_URL": "http://127.0.0.1:8000",
             }.get(name)),
-            patch("autoquant_cli.health.urlopen", side_effect=URLError("connection refused")),
-            patch("autoquant_cli.health.ENV_FILE_PATH", Path("/tmp/test.env")),
+            patch("autoquant_cli.commands.health.urlopen", side_effect=URLError("connection refused")),
+            patch("autoquant_cli.commands.health.ENV_FILE_PATH", Path("/tmp/test.env")),
             patch("pathlib.Path.exists", return_value=True),
         ):
             payload = health()
