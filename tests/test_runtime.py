@@ -19,7 +19,7 @@ class RuntimeTest(unittest.TestCase):
     def test_run_train_file_supports_core_model_base_import(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             home_path = Path(tmp_dir)
-            prices_file = home_path / ".autoquant" / "runs" / "run-1" / "data" / "prices.csv"
+            prices_file = home_path / ".nanobot" / "workspace" / "autoquant" / "runs" / "run-1" / "data" / "prices.csv"
             prices_file.parent.mkdir(parents=True, exist_ok=True)
             with prices_file.open("w", newline="", encoding="utf-8") as file:
                 writer = csv.DictWriter(file, fieldnames=["timestamp", "ticker", "open", "high", "low", "close", "volume"])

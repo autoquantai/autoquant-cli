@@ -42,7 +42,7 @@ class ReadmeSyncTest(unittest.TestCase):
 
     def test_ensure_setup_repo_synced_raises_when_fetch_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            repo_dir = Path(tmp_dir) / ".autoquant" / "autoquant-setup"
+            repo_dir = Path(tmp_dir) / ".nanobot" / "workspace" / "autoquant" / "autoquant-setup"
             repo_dir.mkdir(parents=True, exist_ok=True)
             (repo_dir / ".git").mkdir(parents=True, exist_ok=True)
 
@@ -103,7 +103,7 @@ class ReadmeSyncTest(unittest.TestCase):
             "updated": True,
         }
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pip_path = Path(tmp_dir) / ".autoquant" / "venv" / "autoquant" / "bin" / "pip"
+            pip_path = Path(tmp_dir) / ".nanobot" / "workspace" / "autoquant" / "venv" / "autoquant" / "bin" / "pip"
             pip_path.parent.mkdir(parents=True, exist_ok=True)
             pip_path.write_text("", encoding="utf-8")
             with patch.dict(os.environ, {"HOME": tmp_dir}, clear=False):
@@ -129,7 +129,7 @@ class ReadmeSyncTest(unittest.TestCase):
             "updated": True,
         }
         with tempfile.TemporaryDirectory() as tmp_dir:
-            pip_path = Path(tmp_dir) / ".autoquant" / "venv" / "autoquant" / "bin" / "pip"
+            pip_path = Path(tmp_dir) / ".nanobot" / "workspace" / "autoquant" / "venv" / "autoquant" / "bin" / "pip"
             pip_path.parent.mkdir(parents=True, exist_ok=True)
             pip_path.write_text("", encoding="utf-8")
             with patch.dict(os.environ, {"HOME": tmp_dir}, clear=False):
@@ -140,6 +140,34 @@ class ReadmeSyncTest(unittest.TestCase):
                     ):
                         with self.assertRaises(RuntimeError):
                             run_update()
+
+    def test_run_update_uses_autoquant_workspace_override(self) -> None:
+        sync_result = {
+            "repo_dir": "/tmp/autoquant-setup",
+            "repo_url": "https://github.com/autoquantai/autoquant-setup.git",
+            "branch": "main",
+            "baseline_commit": "old_head",
+            "latest_commit": "new_head",
+            "head_after_sync": "new_head",
+            "updated": True,
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            workspace_dir = Path(tmp_dir) / "custom-workspace"
+            pip_path = workspace_dir / "venv" / "autoquant" / "bin" / "pip"
+            pip_path.parent.mkdir(parents=True, exist_ok=True)
+            pip_path.write_text("", encoding="utf-8")
+            with patch.dict(
+                os.environ,
+                {"HOME": tmp_dir, "AUTOQUANT_WORKSPACE": str(workspace_dir)},
+                clear=False,
+            ):
+                with patch("autoquant_cli.readme_sync.sync_setup_repo", return_value=sync_result):
+                    with patch(
+                        "autoquant_cli.readme_sync.subprocess.run",
+                        return_value=subprocess.CompletedProcess(["pip"], 0, "ok", ""),
+                    ):
+                        result = run_update()
+        self.assertEqual(result["exit_code"], 0)
 
     def test_get_readme_diff_returns_expected_payload(self) -> None:
         sync_state = {

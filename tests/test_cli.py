@@ -19,6 +19,7 @@ class CliTest(unittest.TestCase):
         logger.info("Testing CLI help output")
         result = self.runner.invoke(app, ["--help"])
         self.assertEqual(result.exit_code, 0)
+        self.assertIn("create-experiment", result.stdout)
         self.assertIn("validate-model", result.stdout)
         self.assertIn("run-model", result.stdout)
         self.assertIn("api", result.stdout)
@@ -62,6 +63,27 @@ class CliTest(unittest.TestCase):
             result = self.runner.invoke(app, ["run-update"])
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.output.strip(), '{"exit_code": 0}')
+
+    def test_create_experiment_command_prints_json(self) -> None:
+        with patch("autoquant_cli.cli.create_experiment", return_value={"id": "run-1", "data_source": "downloaded"}):
+            result = self.runner.invoke(
+                app,
+                [
+                    "create-experiment",
+                    "--name",
+                    "test-run",
+                    "--ticker",
+                    "AAPL",
+                    "--from-date",
+                    "2026-01-01",
+                    "--to-date",
+                    "2026-02-28",
+                    "--task",
+                    "classification",
+                ],
+            )
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.output.strip(), '{"id": "run-1", "data_source": "downloaded"}')
 
 
 if __name__ == "__main__":

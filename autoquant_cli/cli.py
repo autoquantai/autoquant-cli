@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 import typer
 
 from autoquant_cli.api_client import get_openapi_json, post_json
+from autoquant_cli.create_experiment import create_experiment
 from autoquant_cli.health import health
 from autoquant_cli.readme_sync import get_readme_diff, run_update
 from autoquant_cli.run_model import run_model
@@ -20,6 +21,31 @@ def _print(payload: object) -> None:
 
 def _print_pretty(payload: object) -> None:
     typer.echo(json.dumps(payload, ensure_ascii=True, indent=2))
+
+
+@app.command("create-experiment")
+def create_experiment_command(
+    name: Annotated[str, typer.Option(...)],
+    ticker: Annotated[str, typer.Option(...)],
+    from_date: Annotated[str, typer.Option(...)],
+    to_date: Annotated[str, typer.Option(...)],
+    task: Annotated[Literal["classification", "regression"], typer.Option(...)],
+    max_experiments: Annotated[int, typer.Option()] = 8,
+    train_time_limit_minutes: Annotated[int, typer.Option()] = 30,
+    refresh_data: Annotated[bool, typer.Option()] = False,
+) -> None:
+    _print(
+        create_experiment(
+            name=name,
+            ticker=ticker,
+            from_date=from_date,
+            to_date=to_date,
+            task=task,
+            max_experiments=max_experiments,
+            train_time_limit_minutes=train_time_limit_minutes,
+            refresh_data=refresh_data,
+        )
+    )
 
 
 @app.command("validate-model")

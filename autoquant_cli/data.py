@@ -12,7 +12,7 @@ from polygon import RESTClient
 from sklearn.model_selection import train_test_split
 from smartpy.utility.log_util import getLogger
 
-from autoquant_cli.config import get_massive_api_key
+from autoquant_cli.config import get_massive_api_key, get_workspace_root
 
 logger = getLogger(__name__)
 
@@ -31,7 +31,7 @@ CSV_LOCK = Lock()
 
 
 def workspace_root() -> Path:
-    path = Path.home() / ".autoquant"
+    path = get_workspace_root()
     path.mkdir(parents=True, exist_ok=True)
     return path
 

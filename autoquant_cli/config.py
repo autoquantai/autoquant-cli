@@ -8,13 +8,19 @@ from smartpy.utility.log_util import getLogger
 
 logger = getLogger(__name__)
 
-ENV_FILE_PATH = Path.home() / ".autoquant" / ".env"
+def get_workspace_root() -> Path:
+    value = os.getenv("AUTOQUANT_WORKSPACE", "").strip()
+    if value:
+        return Path(value).expanduser()
+    return Path.home() / ".nanobot" / "workspace" / "autoquant"
+
+
+ENV_FILE_PATH = get_workspace_root() / ".env"
 
 
 def load_env() -> None:
     if ENV_FILE_PATH.exists():
         load_dotenv(ENV_FILE_PATH, override=False)
-        #logger.info("Loaded env file %s", ENV_FILE_PATH)
 
 
 load_env()
