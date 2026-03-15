@@ -24,7 +24,6 @@ class CliTest(unittest.TestCase):
         self.assertIn("run-model", result.stdout)
         self.assertIn("api", result.stdout)
         self.assertIn("health", result.stdout)
-        self.assertIn("get-openapi", result.stdout)
 
     def test_api_command_rejects_invalid_json(self) -> None:
         result = self.runner.invoke(app, ["api", "/experiment/get", "{bad"])
@@ -42,13 +41,6 @@ class CliTest(unittest.TestCase):
             result = self.runner.invoke(app, ["health"])
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.output.strip(), '{"ok": true}')
-
-    def test_get_openapi_command_prints_pretty_json(self) -> None:
-        payload = {"openapi": "3.1.0", "info": {"title": "AutoQuant API"}}
-        with patch("autoquant_cli.cli.get_openapi_json", return_value=payload):
-            result = self.runner.invoke(app, ["get-openapi"])
-        self.assertEqual(result.exit_code, 0)
-        self.assertEqual(result.output, '{\n  "openapi": "3.1.0",\n  "info": {\n    "title": "AutoQuant API"\n  }\n}\n')
 
     def test_create_experiment_command_prints_json(self) -> None:
         with patch("autoquant_cli.cli.create_experiment", return_value={"id": "run-1", "data_source": "downloaded"}):

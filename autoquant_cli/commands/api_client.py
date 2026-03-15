@@ -57,32 +57,6 @@ def post_json(path: str, payload: dict[str, Any]) -> Any:
         raise RuntimeError(f"Backend returned invalid JSON: {text}") from exc
 
 
-def get_openapi_json() -> Any:
-    url = f"{get_backend_base_url()}/openapi.json"
-    request = Request(
-        url,
-        headers={
-            "Accept": "application/json",
-        },
-        method="GET",
-    )
-    logger.info("GET %s", url)
-    try:
-        with urlopen(request) as response:
-            text = response.read().decode("utf-8")
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Backend request failed with status {exc.code}: {body}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Backend request failed: {exc.reason}") from exc
-    if not text.strip():
-        return {}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Backend returned invalid JSON: {text}") from exc
-
-
 def get_run(run_id: str) -> dict[str, Any]:
     payload = {
         "run_ids": [run_id],
